@@ -22,7 +22,6 @@ async def get_order(order_id: str) -> dict:
         "status": "ready"
     }
 
-
 @router.post("/orders", name="agent_test_create_order")
 async def create_order(order: TestOrder) -> dict:
     order_id = await create_order_record(
@@ -42,7 +41,6 @@ async def create_order(order: TestOrder) -> dict:
         "status": "created"
     }
 
-
 @router.get("/payments/{payment_id}", name="agent_test_get_payment")
 async def get_payment(payment_id: str) -> dict:
     payment = await fetch_payment(payment_id)
@@ -50,9 +48,10 @@ async def get_payment(payment_id: str) -> dict:
     return {
         "payment_id": payment_id,
         "status": payment["status"],
-        "transaction_id": payment["transaction_id"]
+        "transaction_id": payment["transaction_id"],
+        "payment_method": payment.get("payment_method"),
+        "is_successful": payment["status"] == "authorized"
     }
-
 
 @router.post("/payments", name="agent_test_create_payment")
 async def create_payment(payment: PaymentRequest) -> dict:
@@ -81,7 +80,6 @@ async def get_inventory(product_id: str) -> dict:
         "reserved_quantity": inventory["reserved_quantity"]
     }
 
-
 @router.post("/inventory/reserve", name="agent_test_reserve_inventory")
 async def reserve_inventory(
     product_id: str,
@@ -89,18 +87,25 @@ async def reserve_inventory(
 ) -> dict:
     inventory = await get_inventory(product_id)
 
+    if quantity <= 0:
+        return {
+            "product_id": product_id,
+            "status": "invalid_quantity"
+        }
+
     if inventory["available_quantity"] < quantity:
         return {
             "product_id": product_id,
-            "status": "insufficient_inventory"
+            "status": "insufficient_inventory",
+            "available_quantity": inventory["available_quantity"]
         }
 
     return {
         "product_id": product_id,
         "reserved_quantity": quantity,
+        "remaining_quantity": inventory["available_quantity"] - quantity,
         "status": "reserved"
     }
-
 
 @router.delete("/orders/{order_id}", name="agent_test_delete_order")
 async def delete_order(order_id: str) -> dict:
