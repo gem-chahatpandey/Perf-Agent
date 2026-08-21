@@ -14,7 +14,7 @@ async def get_order(order_id: str) -> dict:
     return {"order_id": order_id, "status": "ready"}
 
 
-@router.post("/orders-created", name="agent_test_create_order")
+@router.post("/orders", name="agent_test_create_order")
 async def create_order(order: TestOrder) -> dict:
     return {"order_id": "test-order", "product_id": order.product_id, "quantity": order.quantity}
 
