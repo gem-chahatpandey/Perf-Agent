@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {"id": "api-gateway", "label": "API Gateway", "type": "gateway"},
+    {"id": "auth-service", "label": "Auth Service", "type": "service"},
+    {"id": "product-service", "label": "Product Service", "type": "service"},
+    {"id": "order-service", "label": "Order Service", "type": "service"},
+    {"id": "payment-service", "label": "Payment Service", "type": "service"},
+    {"id": "cart-service", "label": "Cart Service", "type": "service"},
+    {"id": "notification-service", "label": "Notification Service", "type": "service"},
+    {"id": "database-primary", "label": "PostgreSQL Primary", "type": "database"},
+    {"id": "redis-cache", "label": "Redis Cache", "type": "cache"},
+    {"id": "payment-gateway", "label": "External Payment Gateway", "type": "external"}
+  ],
+  "edges": [
+    {"from": "api-gateway", "to": "auth-service"},
+    {"from": "api-gateway", "to": "product-service"},
+    {"from": "api-gateway", "to": "order-service"},
+    {"from": "api-gateway", "to": "cart-service"},
+    {"from": "order-service", "to": "payment-service"},
+    {"from": "order-service", "to": "notification-service"},
+    {"from": "payment-service", "to": "payment-gateway"},
+    {"from": "auth-service", "to": "database-primary"},
+    {"from": "product-service", "to": "database-primary"},
+    {"from": "product-service", "to": "redis-cache"},
+    {"from": "order-service", "to": "database-primary"},
+    {"from": "payment-service", "to": "database-primary"},
+    {"from": "cart-service", "to": "redis-cache"}
+  ]
+}

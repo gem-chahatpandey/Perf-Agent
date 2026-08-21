@@ -1,0 +1,91 @@
+{
+  "application": "E-Commerce Platform",
+  "environment": "Performance-Test",
+  "duration_seconds": 1800,
+  "overall_error_rate_pct": 4.2,
+  "peak_concurrent_users": 500,
+  "business_transactions": [
+    {
+      "name": "Checkout",
+      "api": "/api/orders/checkout",
+      "avg_response_time_ms": 850,
+      "p95_ms": 3800,
+      "p99_ms": 8500,
+      "error_rate_pct": 3.2,
+      "calls": 5000,
+      "calls_per_min": 166
+    },
+    {
+      "name": "Payment Processing",
+      "api": "/api/payments/process",
+      "avg_response_time_ms": 1200,
+      "p95_ms": 5500,
+      "p99_ms": 12000,
+      "error_rate_pct": 5.8,
+      "calls": 4500,
+      "calls_per_min": 150
+    }
+  ],
+  "infrastructure": [
+    {
+      "component": "payment-service",
+      "tier": "Backend",
+      "node": "payment-node-1",
+      "cpu_pct": 92.4,
+      "memory_pct": 78.3,
+      "memory_used_mb": 3200,
+      "jvm_heap_used_mb": 2800,
+      "jvm_heap_max_mb": 4096,
+      "gc_time_ms": 850,
+      "gc_count": 342,
+      "thread_count": 420,
+      "thread_blocked": 85,
+      "db_response_time_ms": 1500,
+      "db_calls_per_min": 8500,
+      "network_latency_ms": 45,
+      "backend_latency_ms": 320,
+      "error_rate_pct": 5.1,
+      "calls_per_min": 4200
+    },
+    {
+      "component": "order-service",
+      "tier": "Backend",
+      "node": "order-node-1",
+      "cpu_pct": 68.5,
+      "memory_pct": 72.1,
+      "memory_used_mb": 2800,
+      "jvm_heap_used_mb": 2100,
+      "jvm_heap_max_mb": 4096,
+      "gc_time_ms": 220,
+      "gc_count": 180,
+      "thread_count": 280,
+      "thread_blocked": 22,
+      "db_response_time_ms": 450,
+      "db_calls_per_min": 5200,
+      "network_latency_ms": 30,
+      "backend_latency_ms": 180,
+      "error_rate_pct": 1.8,
+      "calls_per_min": 3800
+    },
+    {
+      "component": "database-primary",
+      "tier": "Database",
+      "node": "db-node-1",
+      "cpu_pct": 88.2,
+      "memory_pct": 91.5,
+      "memory_used_mb": 14600,
+      "jvm_heap_used_mb": 0,
+      "jvm_heap_max_mb": 0,
+      "gc_time_ms": 0,
+      "gc_count": 0,
+      "thread_count": 520,
+      "thread_blocked": 120,
+      "db_response_time_ms": 1200,
+      "db_calls_per_min": 15000,
+      "network_latency_ms": 8,
+      "backend_latency_ms": 0,
+      "error_rate_pct": 2.4,
+      "calls_per_min": 15000
+    }
+  ]
+}

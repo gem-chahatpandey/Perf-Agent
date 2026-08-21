@@ -1,0 +1,22 @@
+{
+  "pr_number": 456,
+  "title": "Optimize payment processing with connection pooling",
+  "author": "dev-engineer",
+  "state": "merged",
+  "changed_files_count": 8,
+  "additions": 245,
+  "deletions": 82,
+  "changed_files": [
+    {"filename": "payment-service/src/main/java/PaymentController.java", "status": "modified", "additions": 15, "deletions": 5, "changes": 20},
+    {"filename": "payment-service/src/main/java/PaymentService.java", "status": "modified", "additions": 85, "deletions": 30, "changes": 115},
+    {"filename": "payment-service/src/main/java/PaymentDAO.java", "status": "modified", "additions": 45, "deletions": 20, "changes": 65},
+    {"filename": "payment-service/src/main/resources/application.yml", "status": "modified", "additions": 12, "deletions": 3, "changes": 15},
+    {"filename": "order-service/src/main/java/OrderService.java", "status": "modified", "additions": 28, "deletions": 12, "changes": 40},
+    {"filename": "common/src/main/java/DatabaseConfig.java", "status": "modified", "additions": 35, "deletions": 8, "changes": 43},
+    {"filename": "payment-service/src/test/java/PaymentServiceTest.java", "status": "modified", "additions": 20, "deletions": 4, "changes": 24},
+    {"filename": "docs/payment-flow.md", "status": "modified", "additions": 5, "deletions": 0, "changes": 5}
+  ],
+  "changed_services": ["payment-service", "order-service", "common"],
+  "changed_endpoints": ["payment-service/src/main/java/PaymentController.java"],
+  "changed_db_files": ["payment-service/src/main/java/PaymentDAO.java", "common/src/main/java/DatabaseConfig.java"]
+}
