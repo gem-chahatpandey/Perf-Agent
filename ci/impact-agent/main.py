@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -31,6 +32,9 @@ class Endpoint:
     source_files: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
     sla: dict[str, Any] = field(default_factory=dict)
+    handler: str = ""
+    calls: list[str] = field(default_factory=list)
+    fingerprint: str = ""
 
 
 @dataclass
@@ -62,6 +66,11 @@ def changed_files(base: str, head: str) -> list[dict[str, str]]:
 
 def diff_text(base: str, head: str) -> str:
     return run_git("diff", "--unified=80", base, head)
+
+
+def git_file(revision: str, filename: str) -> str | None:
+    result = subprocess.run(["git", "show", f"{revision}:{filename}"], capture_output=True, text=True)
+    return result.stdout if result.returncode == 0 else None
 
 
 def load_json(path: Path) -> Any:
@@ -140,6 +149,91 @@ def discover_routes(root: Path, files: list[dict[str, str]]) -> list[Endpoint]:
                     ))
                     break
     return endpoints
+
+
+def _call_name(node: ast.Call) -> str:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return ""
+
+
+def _string_argument(node: ast.Call) -> str:
+    if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+        return node.args[0].value
+    return ""
+
+
+def parse_python_routes(source: str | None, filename: str) -> list[Endpoint]:
+    if not source:
+        return []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    prefixes: dict[str, str] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        if _call_name(node.value) != "APIRouter":
+            continue
+        prefix = next((keyword.value.value for keyword in node.value.keywords if keyword.arg == "prefix" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str)), "")
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                prefixes[target.id] = prefix
+
+    endpoints = []
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        calls = sorted({_call_name(call) for call in ast.walk(node) if isinstance(call, ast.Call) and _call_name(call)})
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                continue
+            method = decorator.func.attr.lower()
+            if method not in HTTP_METHODS or not isinstance(decorator.func.value, ast.Name):
+                continue
+            route = _string_argument(decorator)
+            if not route:
+                continue
+            name = next((keyword.value.value for keyword in decorator.keywords if keyword.arg == "name" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str)), node.name)
+            full_path = f"{prefixes.get(decorator.func.value.id, '')}{route}"
+            endpoints.append(Endpoint(
+                operation_id=name,
+                method=method.upper(),
+                path=full_path,
+                service=Path(filename).stem,
+                source_files=[filename],
+                handler=node.name,
+                calls=calls,
+                fingerprint=ast.dump(node, annotate_fields=False, include_attributes=False),
+            ))
+    return endpoints
+
+
+def revision_routes(revision: str, files: list[dict[str, str]]) -> list[Endpoint]:
+    routes = []
+    for item in files:
+        filename = item["filename"]
+        if not filename.endswith(".py"):
+            continue
+        routes.extend(parse_python_routes(git_file(revision, filename), filename))
+    return routes
+
+
+def endpoint_callers(endpoints: list[Endpoint], changed_handlers: set[str]) -> set[str]:
+    callers = set()
+    pending = set(changed_handlers)
+    while pending:
+        targets = pending
+        pending = set()
+        for endpoint in endpoints:
+            if endpoint.handler not in callers and set(endpoint.calls) & targets:
+                callers.add(endpoint.handler)
+                pending.add(endpoint.handler)
+    return callers
 
 
 def load_dependency_graph(root: Path, explicit: str | None) -> tuple[dict[str, set[str]], list[str]]:
@@ -237,13 +331,28 @@ def analyze(root: Path, base: str, head: str, dependency_path: str | None) -> di
     files = changed_files(base, head)
     diff = diff_text(base, head)
     specs = load_specs(root)
-    discovered = discover_routes(root, files)
+    base_routes = revision_routes(base, files)
+    head_routes = revision_routes(head, files)
+    discovered = head_routes or discover_routes(root, files)
     endpoints = specs + discovered
     unique: dict[tuple[str, str, str], Endpoint] = {(e.operation_id, e.method, e.path): e for e in endpoints}
     endpoints = list(unique.values())
     graph, warnings = load_dependency_graph(root, dependency_path)
-    direct, unresolved = route_impacts(diff, endpoints, files)
-    removed = removed_routes(diff)
+    base_by_key = {(route.method, route.path): route for route in base_routes}
+    head_by_key = {(route.method, route.path): route for route in head_routes}
+    new_keys = head_by_key.keys() - base_by_key.keys()
+    removed_keys = base_by_key.keys() - head_by_key.keys()
+    modified_keys = {
+        key for key in head_by_key.keys() & base_by_key.keys()
+        if head_by_key[key].fingerprint != base_by_key[key].fingerprint
+    }
+    direct = [Impact(route.operation_id, route.method, route.path, route.service, "direct", 0.99, "Route handler changed in the PR", [route.source_files[0]]) for key, route in head_by_key.items() if key in modified_keys]
+    new_routes = [head_by_key[key] for key in new_keys]
+    removed_routes_catalog = [base_by_key[key] for key in removed_keys]
+    unresolved = []
+    if not head_routes and not specs:
+        direct, unresolved = route_impacts(diff, endpoints, files)
+    removed = [Impact(route.operation_id, route.method, route.path, route.service, "removed", 0.99, "Route declaration was removed in the PR", [route.source_files[0]]) for route in removed_routes_catalog] or removed_routes(diff)
     direct_keys = {(item.operation_id, item.method, item.path) for item in direct}
     services = changed_services(files, endpoints)
     indirect_services = reverse_callers(graph, services)
@@ -253,8 +362,15 @@ def analyze(root: Path, base: str, head: str, dependency_path: str | None) -> di
         if key in direct_keys or not endpoint.service or endpoint.service not in indirect_services:
             continue
         indirect.append(Impact(endpoint.operation_id, endpoint.method, endpoint.path, endpoint.service, "indirect", 0.82, "Owning service depends on a changed service", [f"Changed services: {', '.join(sorted(services))}"]))
+    changed_handlers = {route.handler for route in new_routes + [head_by_key[key] for key in modified_keys] if route.handler}
+    caller_handlers = endpoint_callers(head_routes, changed_handlers)
+    direct_handlers = {impact.operation_id for impact in direct}
+    for endpoint in head_routes:
+        if endpoint.handler not in caller_handlers or endpoint.handler in changed_handlers or endpoint.operation_id in direct_handlers:
+            continue
+        indirect.append(Impact(endpoint.operation_id, endpoint.method, endpoint.path, endpoint.service, "indirect", 0.9, "Route handler calls a changed endpoint handler", sorted(set(endpoint.calls) & changed_handlers)))
     changed_names = {item["filename"] for item in files}
-    new_endpoints = [item for item in direct if any(item.path in line for line in diff.splitlines() if line.startswith("+"))]
+    new_endpoints = [Impact(route.operation_id, route.method, route.path, route.service, "new", 1.0, "Route declaration was added in the PR", [route.source_files[0]]) for route in new_routes]
     potential: list[Impact] = []
     if any(Path(name).name.lower() in {"dockerfile", "pyproject.toml", "package.json", "settings.py", "config.py"} or "migration" in name.lower() for name in changed_names):
         potential = [Impact(endpoint.operation_id, endpoint.method, endpoint.path, endpoint.service, "potential", 0.55, "Shared configuration, build, or database change may affect runtime behavior", []) for endpoint in endpoints if (endpoint.operation_id, endpoint.method, endpoint.path) not in direct_keys and endpoint not in indirect]
@@ -267,7 +383,7 @@ def analyze(root: Path, base: str, head: str, dependency_path: str | None) -> di
         "changed_files": files,
         "new_endpoints": [asdict(item) for item in new_endpoints],
         "removed_endpoints": [asdict(item) for item in removed],
-        "directly_affected_endpoints": [asdict(item) for item in direct if item not in new_endpoints],
+        "directly_affected_endpoints": [asdict(item) for item in direct],
         "indirectly_affected_endpoints": [asdict(item) for item in indirect],
         "potentially_affected_endpoints": [asdict(item) for item in potential],
         "unresolved_changes": unresolved,
