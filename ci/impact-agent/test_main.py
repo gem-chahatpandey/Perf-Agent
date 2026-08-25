@@ -1,6 +1,6 @@
 import unittest
 
-from main import Endpoint, analyze, markdown, reverse_callers, route_impacts
+from main import Endpoint, endpoint_callers, markdown, parse_python_routes, reverse_callers, route_impacts
 
 
 class ImpactAgentTests(unittest.TestCase):
@@ -39,6 +39,22 @@ class ImpactAgentTests(unittest.TestCase):
             reverse_callers(graph, {"payment-service"}),
             {"order-service", "checkout-service"},
         )
+
+    def test_parses_routes_and_callers_from_python_source(self):
+        source = '''
+from fastapi import APIRouter
+router = APIRouter(prefix="/test")
+@router.get("/payments/{payment_id}", name="get_payment")
+async def get_payment(payment_id: str):
+    return {"payment_id": payment_id}
+@router.get("/orders/{order_id}", name="get_order")
+async def get_order(order_id: str):
+    return await get_payment(order_id)
+'''
+        routes = parse_python_routes(source, "backend/app/api/routes/test.py")
+        callers = endpoint_callers(routes, {"get_payment"})
+        self.assertEqual({route.operation_id for route in routes}, {"get_payment", "get_order"})
+        self.assertEqual(callers, {"get_order"})
 
     def test_markdown_contains_all_impact_sections(self):
         report = {
